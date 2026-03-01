@@ -1,0 +1,113 @@
+---
+title: "Login"
+description: "Autentique-se com email e senha para obter um token JWT."
+---
+
+## `POST /v1/auth/login`
+
+Realiza o login do usuário. Retorna um token JWT para uso nas requisições autenticadas.
+
+Se a autenticação de dois fatores (2FA) estiver ativa na conta, o endpoint retorna um `tempToken` temporário ao invés do JWT definitivo. O token definitivo só é emitido após a verificação do código TOTP.
+
+---
+
+## Request
+
+```http
+POST https://api.liquera.com.br/v1/auth/login
+Content-Type: application/json
+```
+
+### Body
+
+<ParamField body="email" type="string" required>
+  Email cadastrado na conta.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Senha da conta. Mínimo de 6 caracteres.
+</ParamField>
+
+### Exemplo
+
+```bash
+curl -X POST https://api.liquera.com.br/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "voce@empresa.com.br",
+    "password": "minha_senha_segura"
+  }'
+```
+
+---
+
+## Responses
+
+<ResponseField name="token" type="string">
+  Token JWT para uso no header `Authorization: Bearer`. Expira em 7 dias.
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  Dados básicos do usuário autenticado.
+
+  <Expandable title="campos">
+    <ResponseField name="user.id" type="string">ID único do usuário.</ResponseField>
+    <ResponseField name="user.email" type="string">Email do usuário.</ResponseField>
+    <ResponseField name="user.role" type="string">Papel do usuário: `USER` ou `ADMIN`.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<Tabs>
+  <Tab title="200 — Sucesso">
+    ```json
+    {
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNseDFhYmMiLCJyb2xlIjoiVVNFUiJ9...",
+      "user": {
+        "id": "clx1abc123",
+        "email": "voce@empresa.com.br",
+        "role": "USER"
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="200 — 2FA requerido">
+    Quando o 2FA está ativo, o login retorna um `tempToken` de curta duração (5 minutos). Use-o na rota de verificação do código TOTP para obter o JWT definitivo.
+
+    ```json
+    {
+      "requiresTwoFactor": true,
+      "tempToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    }
+    ```
+  </Tab>
+  <Tab title="401 — Credenciais inválidas">
+    ```json
+    {
+      "message": "email ou senha invalidos"
+    }
+    ```
+  </Tab>
+  <Tab title="403 — Email não verificado">
+    ```json
+    {
+      "message": "Email não verificado. Verifique sua caixa de entrada.",
+      "code": "EMAIL_NOT_VERIFIED"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Usando o token
+
+Após o login, inclua o JWT em todas as requisições autenticadas:
+
+```bash
+curl https://api.liquera.com.br/v1/charges \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+<Tip>
+  Para integrações em produção, prefira criar uma [API Key](/api-reference/authentication/create-api-key) e usar ela no lugar do JWT. O JWT expira em 7 dias; a API Key permanece ativa até ser deletada.
+</Tip>

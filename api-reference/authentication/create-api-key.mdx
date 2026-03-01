@@ -1,0 +1,131 @@
+---
+title: "Criar API Key"
+description: "Crie uma API Key para autenticar integrações server-side."
+---
+
+## `POST /v1/api-keys`
+
+Cria uma nova API Key vinculada ao seu merchant. A key é gerada com o prefixo `lk_` e pode ser usada no header `Authorization: Bearer` em qualquer rota que aceite autenticação.
+
+<Note>
+  Esta rota requer autenticação via **JWT**. Não é possível usar uma API Key para criar outra API Key.
+</Note>
+
+---
+
+## Request
+
+```http
+POST https://api.liquera.com.br/v1/api-keys
+Authorization: Bearer <seu_jwt>
+Content-Type: application/json
+```
+
+### Body
+
+<ParamField body="name" type="string" required>
+  Nome identificador da API Key. Use nomes descritivos como `"Produção"`, `"Integração ERP"` ou `"Checkout Site"`.
+</ParamField>
+
+<ParamField body="description" type="string" required>
+  Descrição do propósito desta key. Ajuda a identificar onde ela está sendo usada caso precise revogar.
+</ParamField>
+
+### Exemplo
+
+```bash
+curl -X POST https://api.liquera.com.br/v1/api-keys \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Produção",
+    "description": "API Key do servidor de checkout em produção"
+  }'
+```
+
+---
+
+## Response
+
+<ResponseField name="apiKey" type="object">
+  Dados da API Key criada.
+
+  <Expandable title="campos">
+    <ResponseField name="apiKey.id" type="string">ID único da API Key. Use para deletar esta key posteriormente.</ResponseField>
+    <ResponseField name="apiKey.name" type="string">Nome da API Key.</ResponseField>
+    <ResponseField name="apiKey.description" type="string">Descrição da API Key.</ResponseField>
+    <ResponseField name="apiKey.value" type="string">
+      O valor da API Key com prefixo `lk_`. **Exibido apenas nesta resposta** — guarde imediatamente.
+    </ResponseField>
+    <ResponseField name="apiKey.status" type="string">Status atual: `ACTIVE`.</ResponseField>
+    <ResponseField name="apiKey.createdAt" type="string">Data e hora de criação em ISO 8601.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<Tabs>
+  <Tab title="201 — Criada">
+    ```json
+    {
+      "apiKey": {
+        "id": "clx2def456",
+        "name": "Produção",
+        "description": "API Key do servidor de checkout em produção",
+        "value": "lk_4f8a2b9c1d3e5f7a8b9c0d1e2f3a4b5c",
+        "status": "ACTIVE",
+        "createdAt": "2025-01-15T10:30:00.000Z"
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="401 — Não autenticado">
+    ```json
+    {
+      "message": "Token inválido ou expirado"
+    }
+    ```
+  </Tab>
+  <Tab title="404 — Merchant não encontrado">
+    ```json
+    {
+      "message": "Merchant não encontrado"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+<Warning>
+  **O `value` é exibido uma única vez.** Após fechar esta resposta, não é possível recuperá-lo. Se perder a key, [delete-a](/api-reference/authentication/delete-api-key) e crie uma nova.
+</Warning>
+
+## Como usar a API Key
+
+Após salvar o `value`, use-o exatamente como usaria um JWT:
+
+```bash
+# Criar uma cobrança com API Key
+curl -X POST https://api.liquera.com.br/v1/charges \
+  -H "Authorization: Bearer lk_4f8a2b9c1d3e5f7a8b9c0d1e2f3a4b5c" \
+  -H "Content-Type: application/json" \
+  -d '{ "amount": 9990, "description": "Pedido #1234" }'
+```
+
+```javascript
+// Node.js — armazene em variável de ambiente
+const response = await fetch('https://api.liquera.com.br/v1/charges', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${process.env.LIQUERA_API_KEY}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({ amount: 9990, description: 'Pedido #1234' }),
+});
+```
+
+## Boas práticas
+
+- Crie uma API Key separada por ambiente (desenvolvimento, staging, produção)
+- Crie uma API Key separada por sistema integrado (ERP, e-commerce, etc.)
+- Nunca compartilhe a mesma key entre sistemas diferentes — assim você pode revogar uma sem afetar as outras
+- Guarde o `value` como variável de ambiente, nunca no código-fonte

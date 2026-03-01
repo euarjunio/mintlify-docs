@@ -1,0 +1,96 @@
+---
+title: "Visão Geral"
+description: "Como autenticar suas requisições na API Liquera."
+---
+
+A API Liquera suporta dois métodos de autenticação, ambos enviados via header `Authorization`:
+
+```http
+Authorization: Bearer <token_ou_api_key>
+```
+
+---
+
+## JWT (JSON Web Token)
+
+O JWT é obtido ao fazer login com email e senha. É ideal para:
+
+- Uso durante desenvolvimento e testes
+- Sessões no seu próprio backend autenticado com credenciais de usuário
+- Gerenciamento de API Keys (criar, listar e deletar keys exige JWT)
+
+**Ciclo de vida:** O token expira em **7 dias**. Após isso, você precisa fazer login novamente.
+
+```bash
+# Obtendo o JWT
+curl -X POST https://api.liquera.com.br/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "voce@exemplo.com.br", "password": "sua_senha" }'
+
+# Usando o JWT
+curl https://api.liquera.com.br/v1/charges \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+## API Key
+
+A API Key é um token de longa duração com prefixo `lk_`. É a forma recomendada para integrações em produção porque:
+
+- Não expira automaticamente
+- Pode ser revogada individualmente sem afetar outras integrações
+- Não está atrelada a uma sessão de usuário
+- Pode ser rotacionada com segurança
+
+**Ciclo de vida:** Permanece ativa até ser deletada explicitamente.
+
+```bash
+# Usando a API Key
+curl https://api.liquera.com.br/v1/charges \
+  -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+<Warning>
+  API Keys dão acesso completo à conta do seu merchant. Nunca exponha uma API Key em código client-side (frontend, app mobile). Use sempre em ambientes server-side com as keys protegidas como variáveis de ambiente.
+</Warning>
+
+---
+
+## Qual usar?
+
+| Situação | Recomendação |
+|----------|-------------|
+| Desenvolvimento / testes | JWT |
+| Backend em produção (criar cobranças, saques) | API Key |
+| Gerenciar as próprias API Keys | JWT |
+| App mobile ou frontend | Nenhum dos dois diretamente — use seu próprio backend como proxy |
+
+---
+
+## Rotas que requerem autenticação
+
+Todas as rotas com prefixo `/v1/` requerem autenticação, exceto as rotas de auth públicas:
+
+| Rota | Auth necessária |
+|------|----------------|
+| `POST /v1/auth/login` | Nenhuma |
+| `POST /v1/auth/register` | Nenhuma |
+| `POST /v1/charges` | JWT ou API Key |
+| `GET /v1/charges` | JWT ou API Key |
+| `POST /v1/merchants/me/withdrawals` | JWT ou API Key |
+| `POST /v1/api-keys` | JWT apenas |
+| `GET /v1/api-keys` | JWT apenas |
+| `DELETE /v1/api-keys/:id` | JWT apenas |
+
+---
+
+## Erros de autenticação
+
+| Código | Mensagem | Causa |
+|--------|----------|-------|
+| `401` | `Cabeçalho de autorização ausente` | Header `Authorization` não enviado |
+| `401` | `Token inválido ou expirado` | JWT inválido, malformado ou vencido |
+| `401` | `Chave de API inválida` | API Key não encontrada no sistema |
+| `401` | `Chave de API inativa` | API Key foi deletada ou desativada |
+| `403` | `Sua conta está inativa` | Merchant bloqueado — entre em contato com o suporte |

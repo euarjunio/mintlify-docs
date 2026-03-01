@@ -1,0 +1,80 @@
+---
+title: "Deletar API Key"
+description: "Revogue permanentemente uma API Key."
+---
+
+## `DELETE /v1/api-keys/:id`
+
+Deleta uma API Key pelo seu ID. A key é removida imediatamente e qualquer requisição usando ela passa a receber `401 Unauthorized`.
+
+<Note>
+  Esta rota requer autenticação via **JWT**.
+</Note>
+
+<Warning>
+  A deleção é **imediata e irreversível**. Certifique-se de que nenhum sistema em produção ainda esteja usando esta key antes de deletá-la. Se deletar por engano, você precisará criar uma nova e atualizar as variáveis de ambiente de todos os sistemas que a utilizavam.
+</Warning>
+
+---
+
+## Request
+
+```http
+DELETE https://api.liquera.com.br/v1/api-keys/:id
+Authorization: Bearer <seu_jwt>
+```
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  ID único da API Key a ser deletada. Obtenha o ID via [listagem de API Keys](/api-reference/authentication/list-api-keys).
+</ParamField>
+
+### Exemplo
+
+```bash
+curl -X DELETE https://api.liquera.com.br/v1/api-keys/clx2def456 \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+## Response
+
+<Tabs>
+  <Tab title="200 — Deletada">
+    ```json
+    {
+      "message": "API key deletada com sucesso"
+    }
+    ```
+  </Tab>
+  <Tab title="404 — Não encontrada">
+    Retornado quando o ID não existe ou a key pertence a outro merchant.
+
+    ```json
+    {
+      "message": "API key não encontrada"
+    }
+    ```
+  </Tab>
+  <Tab title="401 — Não autenticado">
+    ```json
+    {
+      "message": "Token inválido ou expirado"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Rotacionando uma key com segurança
+
+Para trocar uma API Key em produção sem downtime:
+
+1. Crie uma nova API Key via `POST /v1/api-keys`
+2. Atualize a variável de ambiente em todos os seus sistemas com o novo `value`
+3. Faça o deploy/reinício dos serviços
+4. Confirme que os sistemas estão operando normalmente com a nova key
+5. Delete a key antiga via `DELETE /v1/api-keys/:id`

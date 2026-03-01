@@ -1,0 +1,187 @@
+---
+title: "Solicitar saque"
+description: "Transfira o saldo disponível para uma chave PIX."
+---
+
+## `POST /v1/merchants/me/withdrawals`
+
+Solicita a transferência do saldo disponível para uma chave PIX de destino. O saldo é **deduzido imediatamente** do seu saldo disponível e a transferência é enviada ao adquirente em seguida.
+
+O status inicial do saque é `PROCESSING`. Quando a transferência é concluída pelo adquirente, o status atualiza para `COMPLETED` via webhook.
+
+---
+
+## Pré-requisitos
+
+- KYC aprovado
+- Merchant com status `ACTIVE`
+- Conta do adquirente configurada
+- Saldo disponível suficiente para o valor solicitado
+
+---
+
+## Request
+
+```http
+POST https://api.liquera.com.br/v1/merchants/me/withdrawals
+Authorization: Bearer <jwt_ou_api_key>
+Content-Type: application/json
+```
+
+### Body
+
+<ParamField body="amount" type="integer" required>
+  Valor do saque em **centavos**. Mínimo: R$ 1,00 (`100`). O valor total deve estar disponível no saldo — saques parciais não são possíveis.
+</ParamField>
+
+<ParamField body="pixKeyType" type="string" required>
+  Tipo da chave PIX de destino. Valores aceitos:
+
+  | Valor | Descrição |
+  |-------|-----------|
+  | `CPF` | Chave no formato CPF (11 dígitos) |
+  | `CNPJ` | Chave no formato CNPJ (14 dígitos) |
+  | `EMAIL` | Chave no formato email |
+  | `PHONE` | Chave no formato telefone (`+5511999998888`) |
+  | `CHAVE_ALEATORIA` | Chave aleatória (EVP) |
+</ParamField>
+
+<ParamField body="pixKey" type="string" required>
+  Chave PIX de destino. O formato deve ser compatível com o `pixKeyType` informado.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Descrição opcional do saque. Máximo de 200 caracteres. Aparece nos registros internos.
+</ParamField>
+
+### Exemplos
+
+<Tabs>
+  <Tab title="Saque para CPF">
+    ```bash
+    curl -X POST https://api.liquera.com.br/v1/merchants/me/withdrawals \
+      -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "amount": 50000,
+        "pixKeyType": "CPF",
+        "pixKey": "12345678901",
+        "description": "Retirada quinzenal"
+      }'
+    ```
+  </Tab>
+  <Tab title="Saque para email">
+    ```bash
+    curl -X POST https://api.liquera.com.br/v1/merchants/me/withdrawals \
+      -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "amount": 150000,
+        "pixKeyType": "EMAIL",
+        "pixKey": "financeiro@empresa.com.br"
+      }'
+    ```
+  </Tab>
+  <Tab title="Saque para chave aleatória">
+    ```bash
+    curl -X POST https://api.liquera.com.br/v1/merchants/me/withdrawals \
+      -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "amount": 10000,
+        "pixKeyType": "CHAVE_ALEATORIA",
+        "pixKey": "123e4567-e89b-12d3-a456-426614174000"
+      }'
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Response
+
+<ResponseField name="message" type="string">Confirmação da solicitação.</ResponseField>
+
+<ResponseField name="withdraw" type="object">
+  Dados do saque criado.
+
+  <Expandable title="campos">
+    <ResponseField name="withdraw.id" type="string">ID único do saque no ledger. Use para rastrear o status.</ResponseField>
+    <ResponseField name="withdraw.amount" type="integer">Valor do saque em centavos.</ResponseField>
+    <ResponseField name="withdraw.description" type="string | null">Descrição informada, ou `null`.</ResponseField>
+    <ResponseField name="withdraw.status" type="string">Status inicial: `PROCESSING`.</ResponseField>
+    <ResponseField name="withdraw.batchId" type="string | null">ID do lote no adquirente, para rastreamento.</ResponseField>
+    <ResponseField name="withdraw.createdAt" type="string">Data e hora de criação em ISO 8601.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="balance" type="object">
+  Saldo atualizado após a dedução do saque.
+
+  <Expandable title="campos">
+    <ResponseField name="balance.available" type="integer">Saldo disponível para saque em centavos.</ResponseField>
+    <ResponseField name="balance.pending" type="integer">Saldo aguardando liquidação em centavos.</ResponseField>
+    <ResponseField name="balance.blocked" type="integer">Saldo bloqueado em centavos.</ResponseField>
+    <ResponseField name="balance.total" type="integer">Saldo total (available + pending + blocked) em centavos.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<Tabs>
+  <Tab title="201 — Em processamento">
+    ```json
+    {
+      "message": "Saque em processamento",
+      "withdraw": {
+        "id": "clx5mno345",
+        "amount": 50000,
+        "description": "Retirada quinzenal",
+        "status": "PROCESSING",
+        "batchId": "batch_abc123",
+        "createdAt": "2025-01-15T15:00:00.000Z"
+      },
+      "balance": {
+        "available": 73200,
+        "pending": 15000,
+        "blocked": 0,
+        "total": 88200
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="400 — Saldo insuficiente">
+    ```json
+    {
+      "message": "Saldo insuficiente para realizar o saque"
+    }
+    ```
+  </Tab>
+  <Tab title="400 — KYC não aprovado">
+    ```json
+    {
+      "message": "KYC precisa estar aprovado para solicitar saque"
+    }
+    ```
+  </Tab>
+  <Tab title="400 — Valor abaixo do mínimo">
+    ```json
+    {
+      "message": "Valor mínimo para saque: R$ 1,00"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Ciclo de vida do saque
+
+```
+PROCESSING → COMPLETED
+           → FAILED (saldo revertido automaticamente)
+```
+
+Se o adquirente rejeitar a transferência, o saldo é **revertido automaticamente** para o seu saldo disponível e você receberá uma notificação.
+
+<Note>
+  O tempo médio para um saque ser concluído é de alguns minutos durante o horário comercial. Transferências PIX fora do horário podem ter delay maior dependendo do banco de destino.
+</Note>

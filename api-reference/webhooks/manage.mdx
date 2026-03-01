@@ -1,0 +1,282 @@
+---
+title: "Gerenciar Webhooks"
+description: "Crie, consulte, atualize e remova webhooks da sua conta."
+---
+
+Todas as rotas de gerenciamento de webhooks requerem autenticação via **JWT ou API Key**.
+
+---
+
+## Criar webhook
+
+### `POST /v1/webhooks/merchant`
+
+Cadastra uma nova URL para receber eventos. Você pode escolher quais eventos quer receber, ou deixar em branco para receber tudo.
+
+```http
+POST https://api.liquera.com.br/v1/webhooks/merchant
+Authorization: Bearer <jwt_ou_api_key>
+Content-Type: application/json
+```
+
+#### Body
+
+<ParamField body="url" type="string" required>
+  URL pública que receberá as requisições `POST` com os eventos. Deve ser HTTPS em produção.
+</ParamField>
+
+<ParamField body="name" type="string">
+  Nome identificador do webhook. Máximo de 100 caracteres. Opcional.
+</ParamField>
+
+<ParamField body="events" type="array">
+  Lista de eventos que este webhook deve receber. Se vazio ou omitido, recebe **todos os eventos** (wildcard).
+
+  Valores aceitos: `charge.paid`, `charge.refunded`, `withdraw.completed`, `withdraw.failed`, `withdraw.refunded`, `pixkey.updated`, `infraction.received`, `infraction.updated`, `infraction.refund_completed`.
+</ParamField>
+
+#### Exemplos
+
+<Tabs>
+  <Tab title="Receber apenas pagamentos">
+    ```bash
+    curl -X POST https://api.liquera.com.br/v1/webhooks/merchant \
+      -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "url": "https://meusite.com.br/webhooks/liquera",
+        "name": "Checkout Principal",
+        "events": ["charge.paid", "charge.refunded"]
+      }'
+    ```
+  </Tab>
+  <Tab title="Receber todos os eventos">
+    ```bash
+    curl -X POST https://api.liquera.com.br/v1/webhooks/merchant \
+      -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "url": "https://meusite.com.br/webhooks/liquera",
+        "name": "Logging Geral",
+        "events": []
+      }'
+    ```
+  </Tab>
+</Tabs>
+
+#### Response `201`
+
+```json
+{
+  "webhook": {
+    "id": "clx8abc123",
+    "name": "Checkout Principal",
+    "url": "https://meusite.com.br/webhooks/liquera",
+    "events": ["charge.paid", "charge.refunded"],
+    "secret": "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef12345678",
+    "status": "ACTIVE",
+    "createdAt": "2025-01-15T10:00:00.000Z"
+  }
+}
+```
+
+<Warning>
+  O campo `secret` é retornado **apenas na criação**. Guarde-o imediatamente — ele é usado para [verificar a assinatura](/api-reference/webhooks/overview#verificação-de-assinatura-hmac-sha256) de todos os eventos recebidos nesta URL. Se perder o secret, remova o webhook e crie um novo.
+</Warning>
+
+---
+
+## Listar webhooks
+
+### `GET /v1/webhooks/merchant`
+
+Retorna todos os webhooks cadastrados, incluindo os **últimos 20 logs de entrega** de cada um.
+
+```http
+GET https://api.liquera.com.br/v1/webhooks/merchant
+Authorization: Bearer <jwt_ou_api_key>
+```
+
+```bash
+curl https://api.liquera.com.br/v1/webhooks/merchant \
+  -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+#### Response `200`
+
+```json
+{
+  "webhooks": [
+    {
+      "id": "clx8abc123",
+      "name": "Checkout Principal",
+      "url": "https://meusite.com.br/webhooks/liquera",
+      "events": ["charge.paid", "charge.refunded"],
+      "secret": "wh_****5678",
+      "status": "ACTIVE",
+      "createdAt": "2025-01-15T10:00:00.000Z",
+      "updatedAt": "2025-01-15T10:00:00.000Z",
+      "logs": [
+        {
+          "id": "log_001",
+          "deliveryId": "dlv_abc",
+          "event": "charge.paid",
+          "url": "https://meusite.com.br/webhooks/liquera",
+          "payload": "{\"event\":\"charge.paid\",\"data\":{...}}",
+          "statusCode": 200,
+          "response": "{\"received\":true}",
+          "attempts": 1,
+          "success": true,
+          "createdAt": "2025-01-15T14:22:05.000Z"
+        }
+      ]
+    }
+  ]
+}
+```
+
+<Note>
+  O campo `secret` na listagem é mascarado (ex: `wh_****5678`). Para recuperar o secret completo, é necessário deletar e recriar o webhook.
+</Note>
+
+---
+
+## Atualizar webhook
+
+### `PATCH /v1/webhooks/merchant/:id`
+
+Atualiza um ou mais campos de um webhook existente. Envie apenas os campos que deseja alterar.
+
+```http
+PATCH https://api.liquera.com.br/v1/webhooks/merchant/:id
+Authorization: Bearer <jwt_ou_api_key>
+Content-Type: application/json
+```
+
+#### Path parameters
+
+<ParamField path="id" type="string" required>
+  ID do webhook a ser atualizado.
+</ParamField>
+
+#### Body (todos opcionais)
+
+<ParamField body="url" type="string">
+  Nova URL de destino.
+</ParamField>
+
+<ParamField body="name" type="string | null">
+  Novo nome. Envie `null` para remover o nome.
+</ParamField>
+
+<ParamField body="events" type="array">
+  Nova lista de eventos. Use `[]` para voltar ao modo wildcard (todos os eventos).
+</ParamField>
+
+<ParamField body="status" type="string">
+  `"ACTIVE"` para reativar ou `"INACTIVE"` para pausar as entregas sem deletar o webhook.
+</ParamField>
+
+#### Exemplos
+
+<Tabs>
+  <Tab title="Pausar webhook">
+    ```bash
+    curl -X PATCH https://api.liquera.com.br/v1/webhooks/merchant/clx8abc123 \
+      -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+      -H "Content-Type: application/json" \
+      -d '{ "status": "INACTIVE" }'
+    ```
+  </Tab>
+  <Tab title="Adicionar eventos">
+    ```bash
+    curl -X PATCH https://api.liquera.com.br/v1/webhooks/merchant/clx8abc123 \
+      -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "events": ["charge.paid", "charge.refunded", "withdraw.completed", "withdraw.failed"]
+      }'
+    ```
+  </Tab>
+  <Tab title="Mudar URL">
+    ```bash
+    curl -X PATCH https://api.liquera.com.br/v1/webhooks/merchant/clx8abc123 \
+      -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+      -H "Content-Type: application/json" \
+      -d '{ "url": "https://api.novodominio.com.br/webhooks" }'
+    ```
+  </Tab>
+</Tabs>
+
+#### Response `200`
+
+```json
+{
+  "webhook": {
+    "id": "clx8abc123",
+    "name": "Checkout Principal",
+    "url": "https://meusite.com.br/webhooks/liquera",
+    "events": ["charge.paid", "charge.refunded", "withdraw.completed", "withdraw.failed"],
+    "status": "ACTIVE",
+    "createdAt": "2025-01-15T10:00:00.000Z",
+    "updatedAt": "2025-01-15T16:00:00.000Z"
+  }
+}
+```
+
+---
+
+## Remover webhook
+
+### `DELETE /v1/webhooks/merchant/:id`
+
+Remove um webhook. As entregas para essa URL cessam imediatamente.
+
+```http
+DELETE https://api.liquera.com.br/v1/webhooks/merchant/:id
+Authorization: Bearer <jwt_ou_api_key>
+```
+
+```bash
+curl -X DELETE https://api.liquera.com.br/v1/webhooks/merchant/clx8abc123 \
+  -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+#### Response `200`
+
+```json
+{
+  "message": "Webhook removido com sucesso"
+}
+```
+
+---
+
+## Listar eventos disponíveis
+
+### `GET /v1/webhooks/merchant/events`
+
+Retorna a lista completa de eventos disponíveis para inscrição. Útil para descoberta dinâmica.
+
+```bash
+curl https://api.liquera.com.br/v1/webhooks/merchant/events \
+  -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+#### Response `200`
+
+```json
+{
+  "events": [
+    { "event": "charge.paid",               "description": "Cobrança PIX paga pelo cliente",       "category": "Cobranças"  },
+    { "event": "charge.refunded",            "description": "Cobrança PIX estornada",               "category": "Cobranças"  },
+    { "event": "withdraw.completed",         "description": "Saque concluído com sucesso",          "category": "Saques"     },
+    { "event": "withdraw.failed",            "description": "Saque falhou ou foi devolvido",        "category": "Saques"     },
+    { "event": "withdraw.refunded",          "description": "Saque devolvido (refund de transferência)", "category": "Saques" },
+    { "event": "pixkey.updated",             "description": "Chave PIX atualizada",                "category": "Chave PIX"  },
+    { "event": "infraction.received",        "description": "Nova infração PIX (MED) recebida",    "category": "Infrações"  },
+    { "event": "infraction.updated",         "description": "Infração PIX atualizada",             "category": "Infrações"  },
+    { "event": "infraction.refund_completed","description": "Reembolso de infração concluído",     "category": "Infrações"  }
+  ]
+}
+```

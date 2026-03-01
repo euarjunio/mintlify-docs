@@ -1,0 +1,88 @@
+---
+title: "Listar API Keys"
+description: "Retorna todas as API Keys ativas do seu merchant."
+---
+
+## `GET /v1/api-keys`
+
+Lista todas as API Keys associadas ao seu merchant, ordenadas da mais recente para a mais antiga.
+
+<Note>
+  Esta rota requer autenticação via **JWT**. O campo `value` (prefixo `lk_`) é retornado na listagem, mas lembre-se de que se você perdeu uma key anteriormente, deve [deletá-la](/api-reference/authentication/delete-api-key) e criar uma nova.
+</Note>
+
+---
+
+## Request
+
+```http
+GET https://api.liquera.com.br/v1/api-keys
+Authorization: Bearer <seu_jwt>
+```
+
+Sem parâmetros de query ou body.
+
+### Exemplo
+
+```bash
+curl https://api.liquera.com.br/v1/api-keys \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+## Response
+
+<ResponseField name="apiKeys" type="array">
+  Lista de API Keys do merchant.
+
+  <Expandable title="campos de cada item">
+    <ResponseField name="id" type="string">ID único da API Key. Use para deletar.</ResponseField>
+    <ResponseField name="name" type="string">Nome da API Key.</ResponseField>
+    <ResponseField name="description" type="string">Descrição da API Key.</ResponseField>
+    <ResponseField name="value" type="string">Valor da key com prefixo `lk_`.</ResponseField>
+    <ResponseField name="status" type="string">Status: `ACTIVE`.</ResponseField>
+    <ResponseField name="createdAt" type="string">Data de criação em ISO 8601.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<Tabs>
+  <Tab title="200 — Sucesso">
+    ```json
+    {
+      "apiKeys": [
+        {
+          "id": "clx2def456",
+          "name": "Produção",
+          "description": "API Key do servidor de checkout em produção",
+          "value": "lk_4f8a2b9c1d3e5f7a8b9c0d1e2f3a4b5c",
+          "status": "ACTIVE",
+          "createdAt": "2025-01-15T10:30:00.000Z"
+        },
+        {
+          "id": "clx1abc123",
+          "name": "Desenvolvimento",
+          "description": "API Key para testes locais",
+          "value": "lk_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+          "status": "ACTIVE",
+          "createdAt": "2025-01-10T08:00:00.000Z"
+        }
+      ]
+    }
+    ```
+  </Tab>
+  <Tab title="200 — Nenhuma key">
+    ```json
+    {
+      "apiKeys": []
+    }
+    ```
+  </Tab>
+  <Tab title="401 — Não autenticado">
+    ```json
+    {
+      "message": "Token inválido ou expirado"
+    }
+    ```
+  </Tab>
+</Tabs>

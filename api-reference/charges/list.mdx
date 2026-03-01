@@ -1,0 +1,141 @@
+---
+title: "Listar cobranças"
+description: "Consulte o histórico de cobranças do seu merchant com paginação e filtros."
+---
+
+## `GET /v1/charges`
+
+Retorna as cobranças do merchant autenticado, ordenadas da mais recente para a mais antiga. Suporta paginação e filtro por status.
+
+Os resultados são cacheados por alguns segundos para otimizar a performance. Em caso de alta frequência de consultas, considere usar webhooks para receber atualizações em tempo real.
+
+---
+
+## Request
+
+```http
+GET https://api.liquera.com.br/v1/charges
+Authorization: Bearer <jwt_ou_api_key>
+```
+
+### Query parameters
+
+<ParamField query="page" type="integer">
+  Número da página. Começa em `1`. **Padrão: `1`**.
+</ParamField>
+
+<ParamField query="limit" type="integer">
+  Número de cobranças por página. Mínimo: `1`. Máximo: `100`. **Padrão: `20`**.
+</ParamField>
+
+<ParamField query="status" type="string">
+  Filtrar por status. Valores aceitos: `PENDING`, `PAID`, `FAILED`, `CANCELED`, `REFUNDED`. Se não informado, retorna cobranças de todos os status.
+</ParamField>
+
+### Exemplos
+
+```bash
+# Todas as cobranças (primeira página)
+curl "https://api.liquera.com.br/v1/charges" \
+  -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Cobranças pagas, página 2
+curl "https://api.liquera.com.br/v1/charges?status=PAID&page=2&limit=50" \
+  -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Cobranças pendentes
+curl "https://api.liquera.com.br/v1/charges?status=PENDING" \
+  -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+---
+
+## Response
+
+<ResponseField name="page" type="integer">Página atual.</ResponseField>
+<ResponseField name="limit" type="integer">Limite por página.</ResponseField>
+<ResponseField name="total" type="integer">Total de cobranças (considerando o filtro de status aplicado).</ResponseField>
+<ResponseField name="charges" type="array">
+  Lista de cobranças.
+
+  <Expandable title="campos de cada cobrança">
+    <ResponseField name="id" type="string">ID único da cobrança.</ResponseField>
+    <ResponseField name="txid" type="string | null">ID da transação no adquirente.</ResponseField>
+    <ResponseField name="qrCode" type="string | null">Payload EMV do QR Code (Pix Copia e Cola).</ResponseField>
+    <ResponseField name="amount" type="integer">Valor em centavos.</ResponseField>
+    <ResponseField name="description" type="string">Descrição da cobrança.</ResponseField>
+    <ResponseField name="status" type="string">Status: `PENDING`, `PAID`, `FAILED`, `CANCELED` ou `REFUNDED`.</ResponseField>
+    <ResponseField name="expiresIn" type="integer">Tempo de expiração em segundos.</ResponseField>
+    <ResponseField name="paidAt" type="string | null">Data e hora do pagamento em ISO 8601, ou `null` se ainda não pago.</ResponseField>
+    <ResponseField name="createdAt" type="string">Data e hora de criação em ISO 8601.</ResponseField>
+    <ResponseField name="customer" type="object | null">
+      Dados do pagador, ou `null` se não informado na criação.
+
+      <Expandable title="campos do customer">
+        <ResponseField name="customer.id" type="string">ID do pagador.</ResponseField>
+        <ResponseField name="customer.name" type="string">Nome do pagador.</ResponseField>
+        <ResponseField name="customer.document" type="string">CPF ou CNPJ do pagador.</ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<Tabs>
+  <Tab title="200 — Sucesso">
+    ```json
+    {
+      "page": 1,
+      "limit": 20,
+      "total": 2,
+      "charges": [
+        {
+          "id": "clx3ghi789",
+          "txid": "a1b2c3d4e5f67890abcdef1234567890",
+          "qrCode": "00020126580014br.gov.bcb.pix0136...",
+          "amount": 9990,
+          "description": "Pedido #1234",
+          "status": "PAID",
+          "expiresIn": 86400,
+          "paidAt": "2025-01-15T14:22:00.000Z",
+          "createdAt": "2025-01-15T10:30:00.000Z",
+          "customer": {
+            "id": "clx0cus111",
+            "name": "João Silva",
+            "document": "12345678901"
+          }
+        },
+        {
+          "id": "clx4jkl012",
+          "txid": "b2c3d4e5f6789012bcdef23456789012",
+          "qrCode": "00020126580014br.gov.bcb.pix0136...",
+          "amount": 5000,
+          "description": "Pedido #1235",
+          "status": "PENDING",
+          "expiresIn": 3600,
+          "paidAt": null,
+          "createdAt": "2025-01-15T11:00:00.000Z",
+          "customer": null
+        }
+      ]
+    }
+    ```
+  </Tab>
+  <Tab title="404 — Merchant não encontrado">
+    ```json
+    {
+      "message": "Merchant não encontrado"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Calculando páginas
+
+Para navegar por todos os resultados, use `total`, `page` e `limit`:
+
+```javascript
+const totalPages = Math.ceil(total / limit);
+const hasNextPage = page < totalPages;
+```

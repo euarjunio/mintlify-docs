@@ -1,33 +1,90 @@
 ---
-title: 'Introduction'
-description: 'Example section for showcasing API endpoints'
+title: "Visão Geral"
+description: "Tudo o que você precisa saber antes de começar a integrar com a API Liquera."
 ---
 
-<Note>
-  If you're not looking to build API reference documentation, you can delete
-  this section by removing the api-reference folder.
-</Note>
+## Base URL
 
-## Welcome
+Todas as requisições devem ser feitas para a seguinte URL base:
 
-There are two ways to build API documentation: [OpenAPI](https://mintlify.com/docs/api-playground/openapi/setup) and [MDX components](https://mintlify.com/docs/api-playground/mdx/configuration). For the starter kit, we are using the following OpenAPI specification.
+```
+https://api.liquera.com.br
+```
 
-<Card
-  title="Plant Store Endpoints"
-  icon="leaf"
-  href="https://github.com/mintlify/starter/blob/main/api-reference/openapi.json"
->
-  View the OpenAPI specification file
-</Card>
+A API segue o padrão REST, aceita e retorna JSON em todas as rotas.
 
-## Authentication
+## Versionamento
 
-All API endpoints are authenticated using Bearer tokens and picked up from the specification file.
+Todas as rotas estão prefixadas com `/v1`:
+
+```
+https://api.liquera.com.br/v1/charges
+https://api.liquera.com.br/v1/merchants/me/withdrawals
+```
+
+## Autenticação
+
+A API aceita dois tipos de autenticação via header `Authorization: Bearer`:
+
+- **JWT** — para uso no seu backend ou durante o desenvolvimento
+- **API Key** (`lk_...`) — recomendado para integrações server-side em produção
+
+Veja a seção [Autenticação](/api-reference/authentication/overview) para mais detalhes.
+
+## Formato dos valores monetários
+
+Todos os valores monetários são representados em **centavos** (inteiros), sem decimais.
+
+| Valor real | Valor na API |
+|------------|--------------|
+| R$ 1,00    | `100`        |
+| R$ 49,90   | `4990`       |
+| R$ 1.000,00| `100000`     |
+
+<Warning>
+  Nunca envie valores com casas decimais. `amount: 10.50` será rejeitado — use `amount: 1050`.
+</Warning>
+
+## Formato de erros
+
+Todos os erros retornam um JSON com o campo `message`:
 
 ```json
-"security": [
-  {
-    "bearerAuth": []
-  }
-]
+{
+  "message": "Descrição do erro"
+}
 ```
+
+Códigos de status HTTP utilizados:
+
+| Status | Significado |
+|--------|-------------|
+| `200` | Sucesso |
+| `201` | Recurso criado |
+| `400` | Requisição inválida (parâmetros incorretos) |
+| `401` | Não autenticado (token ausente ou inválido) |
+| `403` | Sem permissão (conta inativa, KYC pendente) |
+| `404` | Recurso não encontrado |
+| `409` | Conflito (recurso duplicado) |
+| `422` | Dados inválidos (CPF/CNPJ incorreto, etc.) |
+| `500` | Erro interno do servidor |
+
+## Rate limiting
+
+| Contexto | Limite |
+|----------|--------|
+| Global (por IP) | 100 req/min |
+| Rotas de auth (`/v1/auth/*`) | 10 req/min por IP |
+| Criação de cobranças | 30 req/min por merchant |
+
+Quando o limite é excedido, a API retorna `429 Too Many Requests`.
+
+## Idempotência
+
+A rota de criação de cobranças suporta o header `x-idempotency-key`. Envie uma chave única por operação para evitar cobranças duplicadas em caso de timeout ou retry.
+
+```http
+x-idempotency-key: pedido-abc-123
+```
+
+Se uma cobrança com a mesma chave já existir, a API retorna a cobrança original em vez de criar uma nova.

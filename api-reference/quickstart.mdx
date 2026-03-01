@@ -1,0 +1,151 @@
+---
+title: "Quickstart"
+description: "Do zero à primeira cobrança PIX em 4 passos."
+---
+
+Este guia mostra o caminho mais rápido para criar sua primeira cobrança PIX usando a API Liquera.
+
+<Note>
+  Antes de começar, você precisa ter uma conta criada e aprovada pelo compliance (KYC aprovado). Se ainda não passou pelo processo de ativação, acesse o [Dashboard](https://app.liquera.com.br) para enviar sua documentação.
+</Note>
+
+## Passo 1 — Faça login e obtenha o JWT
+
+Use suas credenciais para obter um token JWT. Você vai precisar dele para criar sua primeira API Key.
+
+```bash
+curl -X POST https://api.liquera.com.br/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "voce@exemplo.com.br",
+    "password": "sua_senha"
+  }'
+```
+
+**Resposta:**
+
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "clx1abc...",
+    "email": "voce@exemplo.com.br",
+    "role": "USER"
+  }
+}
+```
+
+Guarde o valor de `token` — você vai usar no próximo passo.
+
+---
+
+## Passo 2 — Crie uma API Key
+
+API Keys são a forma recomendada de autenticar integrações server-side. Diferente do JWT, elas não expiram e podem ser revogadas individualmente.
+
+```bash
+curl -X POST https://api.liquera.com.br/v1/api-keys \
+  -H "Authorization: Bearer SEU_JWT_AQUI" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Produção",
+    "description": "API Key principal do sistema"
+  }'
+```
+
+**Resposta:**
+
+```json
+{
+  "apiKey": {
+    "id": "clx2def...",
+    "name": "Produção",
+    "description": "API Key principal do sistema",
+    "value": "lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "status": "ACTIVE",
+    "createdAt": "2025-01-01T00:00:00.000Z"
+  }
+}
+```
+
+<Warning>
+  O campo `value` com o prefixo `lk_` é exibido **apenas uma vez**. Salve-o imediatamente em um lugar seguro (variável de ambiente, secrets manager, etc). Não é possível recuperá-lo depois.
+</Warning>
+
+---
+
+## Passo 3 — Crie uma cobrança PIX
+
+Agora use sua API Key para criar uma cobrança. O campo `amount` é em **centavos**.
+
+```bash
+curl -X POST https://api.liquera.com.br/v1/charges \
+  -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 9990,
+    "description": "Pedido #1234",
+    "expiresIn": 3600
+  }'
+```
+
+**Resposta:**
+
+```json
+{
+  "charge": {
+    "id": "clx3ghi...",
+    "txid": "a1b2c3d4e5f6...",
+    "qrCode": "00020126580014br.gov.bcb.pix...",
+    "imageBase64": "data:image/png;base64,iVBORw0KGgo...",
+    "amount": 9990,
+    "status": "PENDING",
+    "expiresIn": 3600,
+    "customer": null
+  }
+}
+```
+
+---
+
+## Passo 4 — Exiba o QR Code para o pagador
+
+Você tem duas opções para mostrar o QR Code:
+
+<Tabs>
+  <Tab title="Imagem (Base64)">
+    Use o campo `imageBase64` diretamente em uma tag `<img>`:
+
+    ```html
+    <img src="data:image/png;base64,iVBORw0KGgo..." alt="QR Code PIX" />
+    ```
+  </Tab>
+  <Tab title="Copia e Cola (EMV)">
+    Use o campo `qrCode` (payload EMV) para o fluxo de "Pix Copia e Cola":
+
+    ```javascript
+    navigator.clipboard.writeText(charge.qrCode);
+    ```
+  </Tab>
+</Tabs>
+
+Quando o pagamento for confirmado, o status da cobrança muda de `PENDING` para `PAID` via webhook.
+
+---
+
+## Próximos passos
+
+<CardGroup cols={2}>
+  <Card title="Autenticação" icon="key" href="/api-reference/authentication/overview">
+    Entenda a diferença entre JWT e API Key e quando usar cada um.
+  </Card>
+  <Card title="Cobranças" icon="qrcode" href="/api-reference/charges/create">
+    Referência completa da rota de criação de cobranças, com todos os campos opcionais.
+  </Card>
+  <Card title="Saques" icon="money-bill-transfer" href="/api-reference/withdrawals/create">
+    Como solicitar saques do saldo disponível para uma chave PIX.
+  </Card>
+  <Card title="Idempotência" icon="rotate" href="/api-reference/introduction#idempotência">
+    Evite cobranças duplicadas usando o header `x-idempotency-key`.
+  </Card>
+</CardGroup>

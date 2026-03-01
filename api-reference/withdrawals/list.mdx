@@ -1,0 +1,120 @@
+---
+title: "Listar saques"
+description: "Consulte o histórico de saques solicitados pelo seu merchant."
+---
+
+## `GET /v1/merchants/me/withdrawals`
+
+Retorna os saques do merchant autenticado, ordenados do mais recente para o mais antigo, com paginação.
+
+---
+
+## Request
+
+```http
+GET https://api.liquera.com.br/v1/merchants/me/withdrawals
+Authorization: Bearer <jwt_ou_api_key>
+```
+
+### Query parameters
+
+<ParamField query="page" type="integer">
+  Número da página. Começa em `1`. **Padrão: `1`**.
+</ParamField>
+
+<ParamField query="limit" type="integer">
+  Número de saques por página. Mínimo: `1`. Máximo: `100`. **Padrão: `20`**.
+</ParamField>
+
+### Exemplos
+
+```bash
+# Todos os saques
+curl "https://api.liquera.com.br/v1/merchants/me/withdrawals" \
+  -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Página 2 com 10 por página
+curl "https://api.liquera.com.br/v1/merchants/me/withdrawals?page=2&limit=10" \
+  -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+---
+
+## Response
+
+<ResponseField name="page" type="integer">Página atual.</ResponseField>
+<ResponseField name="limit" type="integer">Limite por página.</ResponseField>
+<ResponseField name="total" type="integer">Total de saques registrados.</ResponseField>
+<ResponseField name="withdrawals" type="array">
+  Lista de saques.
+
+  <Expandable title="campos de cada saque">
+    <ResponseField name="id" type="string">ID único do saque no ledger.</ResponseField>
+    <ResponseField name="amount" type="integer">Valor do saque em centavos.</ResponseField>
+    <ResponseField name="description" type="string | null">Descrição do saque, ou `null`.</ResponseField>
+    <ResponseField name="status" type="string">
+      Status do saque:
+
+      | Status | Descrição |
+      |--------|-----------|
+      | `PROCESSING` | Transferência enviada ao adquirente, aguardando confirmação |
+      | `COMPLETED` | Transferência PIX concluída com sucesso |
+      | `FAILED` | Transferência rejeitada — saldo revertido automaticamente |
+    </ResponseField>
+    <ResponseField name="batchId" type="string | null">ID do lote no adquirente.</ResponseField>
+    <ResponseField name="pixKey" type="string | null">Chave PIX de destino utilizada.</ResponseField>
+    <ResponseField name="pixKeyType" type="string | null">Tipo da chave PIX: `CPF`, `CNPJ`, `EMAIL`, `PHONE` ou `CHAVE_ALEATORIA`.</ResponseField>
+    <ResponseField name="createdAt" type="string">Data e hora de solicitação em ISO 8601.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<Tabs>
+  <Tab title="200 — Sucesso">
+    ```json
+    {
+      "page": 1,
+      "limit": 20,
+      "total": 3,
+      "withdrawals": [
+        {
+          "id": "clx5mno345",
+          "amount": 50000,
+          "description": "Retirada quinzenal",
+          "status": "COMPLETED",
+          "batchId": "batch_abc123",
+          "pixKey": "12345678901",
+          "pixKeyType": "CPF",
+          "createdAt": "2025-01-15T15:00:00.000Z"
+        },
+        {
+          "id": "clx6pqr678",
+          "amount": 150000,
+          "description": null,
+          "status": "PROCESSING",
+          "batchId": "batch_def456",
+          "pixKey": "financeiro@empresa.com.br",
+          "pixKeyType": "EMAIL",
+          "createdAt": "2025-01-14T09:00:00.000Z"
+        },
+        {
+          "id": "clx7stu901",
+          "amount": 25000,
+          "description": "Teste",
+          "status": "FAILED",
+          "batchId": null,
+          "pixKey": "99999999999",
+          "pixKeyType": "CPF",
+          "createdAt": "2025-01-10T12:00:00.000Z"
+        }
+      ]
+    }
+    ```
+  </Tab>
+  <Tab title="404 — Merchant não encontrado">
+    ```json
+    {
+      "message": "Merchant não encontrado"
+    }
+    ```
+  </Tab>
+</Tabs>

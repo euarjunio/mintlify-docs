@@ -1,0 +1,246 @@
+---
+title: "Criar cobrança"
+description: "Gere um QR Code PIX para receber um pagamento."
+---
+
+## `POST /v1/charges`
+
+Cria uma cobrança PIX imediata com QR Code. A resposta inclui o payload EMV (copia e cola) e a imagem do QR Code em Base64.
+
+A taxa da plataforma é automaticamente descontada via split de pagamento — você não precisa calcular nada.
+
+---
+
+## Pré-requisitos
+
+Para criar cobranças, seu merchant precisa:
+
+<Steps>
+  <Step title="KYC aprovado">
+    Seus documentos foram analisados e aprovados pelo compliance.
+  </Step>
+  <Step title="Conta do adquirente configurada">
+    A conta de recebimento foi configurada pelo time Liquera após a aprovação do KYC.
+  </Step>
+  <Step title="Chave PIX ativa">
+    Você cadastrou uma chave PIX e ela está com status ativo.
+  </Step>
+</Steps>
+
+Se alguma condição não for atendida, a API retornará `403` com uma mensagem explicando o que está faltando.
+
+---
+
+## Request
+
+```http
+POST https://api.liquera.com.br/v1/charges
+Authorization: Bearer <jwt_ou_api_key>
+Content-Type: application/json
+```
+
+### Headers opcionais
+
+<ParamField header="x-idempotency-key" type="string">
+  Chave de idempotência com até 64 caracteres. Se uma cobrança com a mesma chave já existir para o seu merchant, a API retorna a cobrança original em vez de criar uma nova. Ideal para evitar duplicatas em retries. Use o ID do pedido ou transação no seu sistema.
+</ParamField>
+
+### Body
+
+<ParamField body="amount" type="integer" required>
+  Valor da cobrança em **centavos**. Mínimo: `1`. Exemplo: `9990` = R$ 99,90.
+</ParamField>
+
+<ParamField body="description" type="string" required>
+  Descrição da cobrança. Máximo de 255 caracteres. Aparece no comprovante do pagador.
+</ParamField>
+
+<ParamField body="expiresIn" type="integer">
+  Tempo de expiração da cobrança em segundos. Mínimo: `60` (1 minuto). Máximo: `604800` (7 dias). **Padrão: `86400` (24 horas).**
+</ParamField>
+
+<ParamField body="customer" type="object">
+  Dados do pagador. Opcional — se não informado, o QR Code pode ser pago por qualquer pessoa.
+
+  <Expandable title="campos do customer">
+    <ParamField body="customer.name" type="string" required>
+      Nome completo do pagador. Mínimo de 2 caracteres.
+    </ParamField>
+    <ParamField body="customer.email" type="string" required>
+      Email do pagador.
+    </ParamField>
+    <ParamField body="customer.phone" type="string" required>
+      Telefone do pagador. Entre 10 e 15 dígitos (somente números, com DDD).
+    </ParamField>
+    <ParamField body="customer.document" type="string" required>
+      CPF (11 dígitos) ou CNPJ (14 dígitos) do pagador. Apenas números, sem formatação.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="tracking" type="object">
+  Dados de rastreamento para atribuição de conversão. Todos os campos são opcionais.
+
+  <Expandable title="campos de tracking">
+    <ParamField body="tracking.utmSource" type="string">Fonte da campanha (ex: `google`, `instagram`).</ParamField>
+    <ParamField body="tracking.utmMedium" type="string">Meio da campanha (ex: `cpc`, `email`).</ParamField>
+    <ParamField body="tracking.utmCampaign" type="string">Nome da campanha.</ParamField>
+    <ParamField body="tracking.utmContent" type="string">Variação do conteúdo do anúncio.</ParamField>
+    <ParamField body="tracking.utmTerm" type="string">Palavra-chave da campanha.</ParamField>
+    <ParamField body="tracking.fbclid" type="string">Facebook Click ID (parâmetro `fbclid` da URL).</ParamField>
+    <ParamField body="tracking.fbc" type="string">Facebook Browser ID (cookie `_fbc`).</ParamField>
+    <ParamField body="tracking.fbp" type="string">Facebook Pixel ID (cookie `_fbp`).</ParamField>
+    <ParamField body="tracking.sourceUrl" type="string">URL de origem do pagador. Máximo de 2048 caracteres.</ParamField>
+    <ParamField body="tracking.clientIp" type="string">IP do pagador (IPv4 ou IPv6).</ParamField>
+    <ParamField body="tracking.userAgent" type="string">User-Agent do browser do pagador.</ParamField>
+  </Expandable>
+</ParamField>
+
+---
+
+## Exemplos
+
+<Tabs>
+  <Tab title="Cobrança simples">
+    ```bash
+    curl -X POST https://api.liquera.com.br/v1/charges \
+      -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "amount": 9990,
+        "description": "Pedido #1234 - Camiseta P"
+      }'
+    ```
+  </Tab>
+  <Tab title="Com pagador identificado">
+    ```bash
+    curl -X POST https://api.liquera.com.br/v1/charges \
+      -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "amount": 9990,
+        "description": "Pedido #1234",
+        "expiresIn": 3600,
+        "customer": {
+          "name": "João Silva",
+          "email": "joao@gmail.com",
+          "phone": "11999998888",
+          "document": "12345678901"
+        }
+      }'
+    ```
+  </Tab>
+  <Tab title="Com idempotência e tracking">
+    ```bash
+    curl -X POST https://api.liquera.com.br/v1/charges \
+      -H "Authorization: Bearer lk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+      -H "Content-Type: application/json" \
+      -H "x-idempotency-key: pedido-1234-tentativa-1" \
+      -d '{
+        "amount": 9990,
+        "description": "Pedido #1234",
+        "tracking": {
+          "utmSource": "instagram",
+          "utmMedium": "cpc",
+          "utmCampaign": "lancamento-verao",
+          "fbclid": "IwAR1abc...",
+          "sourceUrl": "https://loja.exemplo.com.br/produto/camiseta"
+        }
+      }'
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Response
+
+<ResponseField name="charge" type="object">
+  Dados da cobrança criada.
+
+  <Expandable title="campos">
+    <ResponseField name="charge.id" type="string">ID único da cobrança na Liquera.</ResponseField>
+    <ResponseField name="charge.txid" type="string">ID da transação no sistema do adquirente.</ResponseField>
+    <ResponseField name="charge.qrCode" type="string">Payload EMV do QR Code (formato "Pix Copia e Cola").</ResponseField>
+    <ResponseField name="charge.imageBase64" type="string">Imagem do QR Code em Base64 com prefixo `data:image/png;base64,`. Use diretamente em `<img src="...">` .</ResponseField>
+    <ResponseField name="charge.amount" type="integer">Valor da cobrança em centavos.</ResponseField>
+    <ResponseField name="charge.status" type="string">Status inicial: `PENDING`.</ResponseField>
+    <ResponseField name="charge.expiresIn" type="integer">Tempo de expiração em segundos.</ResponseField>
+    <ResponseField name="charge.customer" type="object | null">Dados do pagador se informado, ou `null`.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<Tabs>
+  <Tab title="201 — Criada">
+    ```json
+    {
+      "charge": {
+        "id": "clx3ghi789",
+        "txid": "a1b2c3d4e5f67890abcdef1234567890",
+        "qrCode": "00020126580014br.gov.bcb.pix0136...",
+        "imageBase64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+        "amount": 9990,
+        "status": "PENDING",
+        "expiresIn": 86400,
+        "customer": {
+          "id": "clx0cus111",
+          "name": "João Silva",
+          "document": "12345678901"
+        }
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="200 — Idempotente (cobrança existente)">
+    Quando uma cobrança com o mesmo `x-idempotency-key` já existe, a API retorna a cobrança original com `idempotent: true`.
+
+    ```json
+    {
+      "charge": {
+        "id": "clx3ghi789",
+        "txid": "a1b2c3d4e5f67890abcdef1234567890",
+        "qrCode": "00020126580014br.gov.bcb.pix0136...",
+        "amount": 9990,
+        "status": "PENDING",
+        "expiresIn": 86400,
+        "customer": null,
+        "createdAt": "2025-01-15T10:30:00.000Z"
+      },
+      "idempotent": true
+    }
+    ```
+  </Tab>
+  <Tab title="403 — KYC pendente">
+    ```json
+    {
+      "message": "Sua conta ainda não foi aprovada pelo compliance. Envie seus documentos."
+    }
+    ```
+  </Tab>
+  <Tab title="403 — Chave PIX inativa">
+    ```json
+    {
+      "message": "Sua chave PIX ainda não está ativa. Aguarde a ativação para criar cobranças."
+    }
+    ```
+  </Tab>
+  <Tab title="422 — Documento inválido">
+    ```json
+    {
+      "message": "Documento do pagador não é um CPF nem CNPJ válido"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Status da cobrança
+
+| Status | Descrição |
+|--------|-----------|
+| `PENDING` | Aguardando pagamento |
+| `PAID` | Pagamento confirmado |
+| `FAILED` | Falha no processamento |
+| `CANCELED` | Cobrança cancelada |
+| `REFUNDED` | Pagamento estornado |
