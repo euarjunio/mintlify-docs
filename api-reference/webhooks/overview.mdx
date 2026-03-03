@@ -23,7 +23,7 @@ sequenceDiagram
   Liquera->>SeuServidor: Marca entrega como sucesso
 ```
 
-Se o seu servidor não retornar `2xx` dentro do timeout (5 segundos), a Liquera fará até **3 tentativas** com intervalo crescente antes de marcar a entrega como falha.
+Se o seu servidor não retornar `2xx` dentro do timeout (5 segundos), a Liquera fará até **3 tentativas** com backoff exponencial (1 min, 2 min, 4 min...) antes de marcar a entrega como falha.
 
 ---
 
@@ -34,7 +34,8 @@ Todo evento entregue pelo webhook segue o mesmo envelope:
 ```json
 {
   "event": "charge.paid",
-  "timestamp": "2025-01-15T14:22:00.000Z",
+  "deliveryId": "dlv_abc123",
+  "timestamp": 1736950920000,
   "data": {
     "chargeId": "clx3ghi789",
     "txid": "a1b2c3d4e5f67890abcdef1234567890",
@@ -51,67 +52,87 @@ Todo evento entregue pelo webhook segue o mesmo envelope:
 | Campo | Tipo | Descrição |
 |-------|------|-----------|
 | `event` | `string` | Nome do evento (ex: `charge.paid`) |
-| `timestamp` | `string` | Momento do evento em ISO 8601 |
+| `deliveryId` | `string` | ID único desta entrega — use para deduplicação |
+| `timestamp` | `number` | Momento do evento em **Unix milliseconds** (ex: `Date.now()`) |
 | `data` | `object` | Payload específico do evento (varia por tipo) |
 
 ---
 
-## Verificação de assinatura (HMAC-SHA256)
+## Verificação do secret
 
-Cada requisição de webhook inclui o header `x-webhook-signature` com uma assinatura HMAC-SHA256. **Sempre valide esta assinatura** para garantir que a requisição veio da Liquera e não foi adulterada.
+Cada requisição de webhook inclui dois headers de segurança:
 
-### Como calcular
+| Header | Descrição |
+|--------|-----------|
+| `x-webhook-secret` | O secret gerado na criação do webhook (valor completo) |
+| `x-delivery-id` | ID único da entrega — mesmo valor do campo `deliveryId` no body |
 
-A assinatura é calculada sobre o corpo bruto (raw body) da requisição:
-
-```
-HMAC-SHA256(secret, rawBody)
-```
+Para validar que a requisição veio da Liquera, **compare o `x-webhook-secret` com o secret que você salvou** ao criar o webhook.
 
 ### Exemplo em Node.js
 
 ```javascript
 import crypto from 'crypto';
 
-function verifyWebhookSignature(rawBody, signature, secret) {
-  const expected = crypto
-    .createHmac('sha256', secret)
-    .update(rawBody)
-    .digest('hex');
+// No seu handler Express/Fastify:
+app.post('/webhooks/liquera', express.json(), (req, res) => {
+  const receivedSecret = req.headers['x-webhook-secret'];
+  const deliveryId = req.headers['x-delivery-id'];
+  const savedSecret = process.env.LIQUERA_WEBHOOK_SECRET;
 
   // Comparação segura contra timing attacks
-  return crypto.timingSafeEqual(
-    Buffer.from(expected, 'hex'),
-    Buffer.from(signature, 'hex')
-  );
-}
-
-// No seu handler Express/Fastify:
-app.post('/webhooks/liquera', express.raw({ type: 'application/json' }), (req, res) => {
-  const signature = req.headers['x-webhook-signature'];
-  const secret = process.env.LIQUERA_WEBHOOK_SECRET;
-
-  if (!verifyWebhookSignature(req.body, signature, secret)) {
-    return res.status(401).json({ message: 'Assinatura inválida' });
+  if (!receivedSecret || !crypto.timingSafeEqual(
+    Buffer.from(receivedSecret),
+    Buffer.from(savedSecret)
+  )) {
+    return res.status(401).json({ message: 'Secret inválido' });
   }
 
-  const event = JSON.parse(req.body);
-  
-  switch (event.event) {
+  const { event, data, deliveryId: bodyDeliveryId, timestamp } = req.body;
+
+  // Usar deliveryId para deduplicação (retries podem re-entregar o mesmo evento)
+  const alreadyProcessed = await checkIfProcessed(bodyDeliveryId);
+  if (alreadyProcessed) {
+    return res.status(200).json({ received: true });
+  }
+
+  switch (event) {
     case 'charge.paid':
-      // processar pagamento confirmado
+      await handleChargePaid(data);
       break;
     case 'withdraw.completed':
-      // processar saque concluído
+      await handleWithdrawCompleted(data);
       break;
   }
 
+  await markAsProcessed(bodyDeliveryId);
   res.status(200).json({ received: true });
 });
 ```
 
+```typescript
+// Fastify com TypeScript
+fastify.post('/webhooks/liquera', async (request, reply) => {
+  const receivedSecret = request.headers['x-webhook-secret'] as string;
+  const savedSecret = process.env.LIQUERA_WEBHOOK_SECRET!;
+
+  const isValid = crypto.timingSafeEqual(
+    Buffer.from(receivedSecret ?? ''),
+    Buffer.from(savedSecret)
+  );
+
+  if (!isValid) {
+    return reply.status(401).send({ message: 'Secret inválido' });
+  }
+
+  const { event, data, deliveryId } = request.body as any;
+  // processar evento...
+  return { received: true };
+});
+```
+
 <Warning>
-  Sempre use o **raw body** (antes do JSON.parse) para calcular a assinatura. Usar `req.body` já parseado pode alterar a ordem dos campos e invalidar a verificação.
+  **Nunca compare strings de secrets diretamente com `===`.** Use sempre `crypto.timingSafeEqual()` para evitar ataques de timing que exploram diferenças de tempo na comparação byte a byte.
 </Warning>
 
 ---
@@ -228,7 +249,7 @@ Use os logs para debugar problemas de integração sem precisar do suporte.
 
 ## Boas práticas
 
-- **Retorne `200` rapidamente:** Processe o evento de forma assíncrona e retorne `200 OK` imediatamente. Não faça operações lentas dentro do handler.
-- **Seja idempotente:** É possível receber o mesmo evento mais de uma vez (retries). Use o `chargeId` ou `withdrawId` para evitar processamento duplicado.
-- **Valide sempre a assinatura:** Nunca processe um evento sem verificar o `x-webhook-signature`.
+- **Retorne `200` rapidamente:** Processe o evento de forma assíncrona e retorne `200 OK` imediatamente. Operações lentas dentro do handler fazem o webhook atingir o timeout e ser reentregue.
+- **Seja idempotente:** É possível receber o mesmo evento mais de uma vez (retries). Use o `deliveryId` para evitar processamento duplicado — salve-o no banco antes de processar.
+- **Valide sempre o secret:** Nunca processe um evento sem verificar o header `x-webhook-secret`.
 - **Monitore os logs:** Consulte periodicamente os logs de entrega para garantir que todos os eventos estão sendo processados com sucesso.

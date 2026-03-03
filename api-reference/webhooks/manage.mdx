@@ -81,7 +81,7 @@ Content-Type: application/json
 ```
 
 <Warning>
-  O campo `secret` é retornado **apenas na criação**. Guarde-o imediatamente — ele é usado para [verificar a assinatura](/api-reference/webhooks/overview#verificação-de-assinatura-hmac-sha256) de todos os eventos recebidos nesta URL. Se perder o secret, remova o webhook e crie um novo.
+  O campo `secret` é retornado **apenas na criação**. Guarde-o imediatamente — ele é enviado no header `x-webhook-secret` de cada entrega e você precisa dele para [verificar que os eventos são legítimos](/api-reference/webhooks/overview#verificação-do-secret). Se perder o secret, remova o webhook e crie um novo.
 </Warning>
 
 ---
